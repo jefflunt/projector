@@ -238,12 +238,15 @@ func (m *model) formatMetadata(height int) string {
 	}
 	readmeView := strings.Join(lines, "\n")
 
-	colWidth := (m.width - 5) / 2
+	// Apply styles for horizontal layout
+	infoWidth := (m.width - 5) * 33 / 100
+	readmeWidth := (m.width - 5) - infoWidth
+
 	infoStyle := lipgloss.NewStyle().
-		Width(colWidth).
+		Width(infoWidth).
 		BorderRight(true).
 		BorderRightForeground(lipgloss.Color("240"))
-	readmeStyle := lipgloss.NewStyle().Width(colWidth)
+	readmeStyle := lipgloss.NewStyle().Width(readmeWidth)
 
 	return lipgloss.NewStyle().
 		Width(m.width).
