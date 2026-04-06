@@ -184,7 +184,6 @@ func (m *model) ensureCursorVisible() {
 
 func (m *model) formatProjects() string {
 	var sb strings.Builder
-	sb.WriteString("Projects:\n")
 	for i, p := range m.projects {
 		cursor := "  "
 		if i == m.cursor {
