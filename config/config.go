@@ -21,6 +21,8 @@ type ProjectDetails struct {
 	AgentDocs        bool     `yaml:"agent_docs"`
 	BuildTestInstall string   `yaml:"build_test_install"` // true, partial, false
 	Starred          bool     `yaml:"starred"`
+	LastCommitDate   string   `yaml:"last_commit_date"`
+	ReadmePreview    string   `yaml:"readme_preview"`
 }
 
 func GetConfigPath() (string, error) {

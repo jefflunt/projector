@@ -1,7 +1,9 @@
 package scanner
 
 import (
+	"bufio"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"projector/config"
 	"strings"
@@ -25,6 +27,32 @@ func ScanProjects(codeFolder string) (map[string]config.ProjectDetails, error) {
 			// Check for git
 			if _, err := os.Stat(filepath.Join(projectPath, ".git")); err == nil {
 				details.Git = true
+
+				// Git Date
+				cmd := exec.Command("git", "-C", projectPath, "log", "-1", "--format=%cd", "--date=short")
+				out, err := cmd.Output()
+				if err == nil {
+					details.LastCommitDate = strings.TrimSpace(string(out))
+				}
+			}
+
+			// README Preview
+			readmeNames := []string{"README.md", "README", "README.txt"}
+			for _, name := range readmeNames {
+				path := filepath.Join(projectPath, name)
+				if _, err := os.Stat(path); err == nil {
+					file, err := os.Open(path)
+					if err == nil {
+						scanner := bufio.NewScanner(file)
+						var lines []string
+						for i := 0; i < 10 && scanner.Scan(); i++ {
+							lines = append(lines, scanner.Text())
+						}
+						details.ReadmePreview = strings.Join(lines, "\n")
+						file.Close()
+						break
+					}
+				}
 			}
 
 			// Check for README
@@ -38,8 +66,7 @@ func ScanProjects(codeFolder string) (map[string]config.ProjectDetails, error) {
 				}
 			}
 
-			// ... existing detection logic ...
-			// Check for starred: assuming if a .starred file exists in root
+			// Check for starred
 			if _, err := os.Stat(filepath.Join(projectPath, ".starred")); err == nil {
 				details.Starred = true
 			} else {
@@ -64,7 +91,7 @@ func ScanProjects(codeFolder string) (map[string]config.ProjectDetails, error) {
 				details.BuildTestInstall = "false"
 			}
 
-			// Detect languages (simplistic)
+			// Detect languages
 			languages := make(map[string]bool)
 			filepath.Walk(projectPath, func(path string, info os.FileInfo, err error) error {
 				if !info.IsDir() {

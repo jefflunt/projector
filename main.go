@@ -201,11 +201,55 @@ func (m *model) formatProjects() string {
 
 func (m *model) View() string {
 	if m.loading {
-		return fmt.Sprintf("\033[2J\033[H\n  %s Scanning...\n\n", m.spinner.View())
+		return fmt.Sprintf("\033[H\n  %s Scanning...\n\n", m.spinner.View())
 	}
 
-	// Viewport + Help bar
-	return fmt.Sprintf("\033[H%s\n%s", m.viewport.View(), m.help.View(keys))
+	// Calculate 40/60 split
+	listHeight := (m.height - 3) * 4 / 10
+	metaHeight := (m.height - 3) - listHeight
+
+	// Top pane: list
+	m.viewport.Height = listHeight
+	m.viewport.SetContent(m.formatProjects())
+	listView := m.viewport.View()
+
+	// Bottom pane: metadata
+	metaView := m.formatMetadata(metaHeight)
+
+	// Combine
+	return fmt.Sprintf("\033[H%s\n%s\n%s", listView, metaView, m.help.View(keys))
+}
+
+func (m *model) formatMetadata(height int) string {
+	if len(m.projects) == 0 {
+		return ""
+	}
+	p := m.projects[m.cursor]
+	d := p.details
+
+	// Info section (left column)
+	info := fmt.Sprintf("Last Commit: %s\nLanguages: %s\nBuild/Test/Install: %s\nAgent Docs: %v",
+		d.LastCommitDate, strings.Join(d.Languages, ", "), d.BuildTestInstall, d.AgentDocs)
+
+	// README preview (right column)
+	readme := d.ReadmePreview
+	// Truncate based on height and width
+	lines := strings.Split(readme, "\n")
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	for i, line := range lines {
+		if len(line) > m.width/2 {
+			lines[i] = line[:m.width/2-3] + "..."
+		}
+	}
+	readmeView := strings.Join(lines, "\n")
+
+	return lipgloss.NewStyle().
+		Width(m.width).
+		Height(height).
+		Border(lipgloss.NormalBorder()).
+		Render(lipgloss.JoinHorizontal(lipgloss.Top, info, "\n", readmeView))
 }
 
 func main() {
