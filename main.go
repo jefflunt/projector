@@ -139,11 +139,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor = (m.cursor + 1) % len(m.projects)
 			}
 			m.viewport.SetContent(m.formatProjects())
+			m.ensureCursorVisible()
 		case key.Matches(msg, keys.Up):
 			if len(m.projects) > 0 {
 				m.cursor = (m.cursor - 1 + len(m.projects)) % len(m.projects)
 			}
 			m.viewport.SetContent(m.formatProjects())
+			m.ensureCursorVisible()
 		}
 	case spinner.TickMsg:
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -169,6 +171,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m *model) ensureCursorVisible() {
+	// If cursor is before start of view, jump to it.
+	if m.cursor < m.viewport.YOffset {
+		m.viewport.YOffset = m.cursor
+	} else if m.cursor >= m.viewport.YOffset+m.viewport.Height {
+		// If cursor is after end of view, jump to it.
+		// Height is lines visible.
+		m.viewport.YOffset = m.cursor - m.viewport.Height + 1
+	}
+}
+
 func (m *model) formatProjects() string {
 	var sb strings.Builder
 	sb.WriteString("Projects:\n")
@@ -189,10 +202,11 @@ func (m *model) formatProjects() string {
 
 func (m *model) View() string {
 	if m.loading {
-		return fmt.Sprintf("\n  %s Scanning...\n\n", m.spinner.View())
+		return fmt.Sprintf("\033[2J\033[H\n  %s Scanning...\n\n", m.spinner.View())
 	}
 
-	return fmt.Sprintf("%s\n\n%s", m.viewport.View(), m.help.View(keys))
+	// Viewport + Help bar
+	return fmt.Sprintf("\033[2J\033[H%s\n%s", m.viewport.View(), m.help.View(keys))
 }
 
 func main() {
