@@ -168,7 +168,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	m.viewport, cmd = m.viewport.Update(msg)
-	return m, cmd
+	return m, nil
 }
 
 func (m *model) ensureCursorVisible() {
@@ -206,7 +206,7 @@ func (m *model) View() string {
 	}
 
 	// Viewport + Help bar
-	return fmt.Sprintf("\033[2J\033[H%s\n%s", m.viewport.View(), m.help.View(keys))
+	return fmt.Sprintf("\033[H%s\n%s", m.viewport.View(), m.help.View(keys))
 }
 
 func main() {
@@ -216,7 +216,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v\n", err)
 		os.Exit(1)
