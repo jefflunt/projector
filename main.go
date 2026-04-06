@@ -238,16 +238,18 @@ func (m *model) formatMetadata(height int) string {
 	}
 	readmeView := strings.Join(lines, "\n")
 
-	colWidth := m.width/2 - 2
-	infoStyle := lipgloss.NewStyle().Width(colWidth)
+	colWidth := (m.width - 5) / 2
+	infoStyle := lipgloss.NewStyle().
+		Width(colWidth).
+		BorderRight(true).
+		BorderRightForeground(lipgloss.Color("240"))
 	readmeStyle := lipgloss.NewStyle().Width(colWidth)
-	spacer := lipgloss.NewStyle().Width(1).Align(lipgloss.Center).Render("|")
 
 	return lipgloss.NewStyle().
 		Width(m.width).
 		Height(height).
 		Border(lipgloss.NormalBorder()).
-		Render(lipgloss.JoinHorizontal(lipgloss.Top, infoStyle.Render(info), spacer, readmeStyle.Render(readmeView)))
+		Render(lipgloss.JoinHorizontal(lipgloss.Top, infoStyle.Render(info), readmeStyle.Render(readmeView)))
 }
 
 func main() {
