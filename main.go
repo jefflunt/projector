@@ -239,17 +239,24 @@ func (m *model) formatMetadata(height int) string {
 		lines = lines[:height]
 	}
 	for i, line := range lines {
-		if len(line) > m.width/2 {
-			lines[i] = line[:m.width/2-3] + "..."
+		if len(line) > m.width/2-2 {
+			lines[i] = line[:m.width/2-5] + "..."
 		}
 	}
 	readmeView := strings.Join(lines, "\n")
+
+	// Apply styles for horizontal layout
+	colWidth := m.width/2 - 2
+	infoStyle := lipgloss.NewStyle().Width(colWidth)
+	readmeStyle := lipgloss.NewStyle().Width(colWidth)
+	// Just use a pipe character as a separator
+	spacer := lipgloss.NewStyle().Width(1).Align(lipgloss.Center).Render("|")
 
 	return lipgloss.NewStyle().
 		Width(m.width).
 		Height(height).
 		Border(lipgloss.NormalBorder()).
-		Render(lipgloss.JoinHorizontal(lipgloss.Top, info, "\n", readmeView))
+		Render(lipgloss.JoinHorizontal(lipgloss.Top, infoStyle.Render(info), spacer, readmeStyle.Render(readmeView)))
 }
 
 func main() {
