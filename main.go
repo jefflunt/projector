@@ -9,6 +9,7 @@ import (
 	"projector/scanner"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -37,14 +38,15 @@ type keyMap struct {
 	JumpDown key.Binding
 	Category key.Binding
 	NewTab   key.Binding
+	Search   key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Category, k.Star, k.Hide, k.Top, k.Bottom, k.NewTab, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Category, k.Star, k.Hide, k.Top, k.Bottom, k.NewTab, k.Search, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Category, k.Star, k.Hide, k.Top, k.Bottom, k.NewTab, k.Quit}}
+	return [][]key.Binding{{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Category, k.Star, k.Hide, k.Top, k.Bottom, k.NewTab, k.Search, k.Quit}}
 }
 
 var keys = keyMap{
@@ -60,6 +62,7 @@ var keys = keyMap{
 	JumpDown: key.NewBinding(key.WithKeys("J"), key.WithHelp("J", "jump down 10")),
 	Category: key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "set category")),
 	NewTab:   key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "open terminal")),
+	Search:   key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
 }
 
 type model struct {
@@ -106,15 +109,23 @@ func initialModel() (*model, error) {
 	h.Styles.ShortKey = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
 	h.Styles.FullKey = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
 
-	return &model{
+	m := &model{
 		config:      cfg,
 		configPath:  configPath,
-		loading:     true,
 		spinner:     s,
 		help:        h,
 		textInput:   ti,
 		editingMode: "none",
-	}, nil
+	}
+
+	if time.Since(cfg.LastScanned) > 60*time.Minute {
+		m.loading = true
+	} else {
+		m.loading = false
+		m.prepareProjectList()
+	}
+
+	return m, nil
 }
 
 func (m *model) prepareProjectList() {
@@ -142,16 +153,19 @@ func (m *model) prepareProjectList() {
 }
 
 func (m *model) Init() tea.Cmd {
-	return tea.Batch(
-		m.spinner.Tick,
-		func() tea.Msg {
-			projects, err := scanner.ScanProjects(m.config.CodeFolder)
-			if err != nil {
-				return err
-			}
-			return projects
-		},
-	)
+	if m.loading {
+		return tea.Batch(
+			m.spinner.Tick,
+			func() tea.Msg {
+				projects, err := scanner.ScanProjects(m.config.CodeFolder)
+				if err != nil {
+					return err
+				}
+				return projects
+			},
+		)
+	}
+	return nil
 }
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -257,7 +271,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				path := filepath.Join(m.config.CodeFolder, m.projects[m.cursor].name)
 				cmdStr := fmt.Sprintf(m.config.NewTabCmd, path)
 				cmd := exec.Command("sh", "-c", cmdStr)
-				// Use Start() to run asynchronously and not block the TUI
 				err := cmd.Start()
 				if err != nil {
 					m.errorMsg = fmt.Sprintf("Error launching terminal: %v", err)
@@ -282,6 +295,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.config.Projects[name] = p
 			}
 		}
+		m.config.LastScanned = time.Now()
 		config.SaveConfig(m.configPath, m.config)
 		m.prepareProjectList()
 		m.viewport.SetContent(m.formatProjects())
@@ -318,7 +332,8 @@ func (m *model) formatProjects() string {
 		}
 
 		desc := p.details.Desc
-		maxDescWidth := m.width - 36
+		// star(1) + space(1) + name(20) + space(1) + cat(8) + " - "(3) = 34
+		maxDescWidth := m.width - 38
 		if len(desc) > maxDescWidth && maxDescWidth > 3 {
 			desc = desc[:maxDescWidth-3] + "..."
 		}
@@ -337,6 +352,10 @@ func (m *model) formatProjects() string {
 func (m *model) View() string {
 	if m.loading {
 		return fmt.Sprintf("\033[H\n  %s Scanning...\n\n", m.spinner.View())
+	}
+
+	if m.width < 10 || m.height < 10 {
+		return "Terminal too small"
 	}
 
 	if m.editingMode != "none" {
@@ -365,7 +384,7 @@ func (m *model) View() string {
 }
 
 func (m *model) formatMetadata(height int) string {
-	if len(m.projects) == 0 {
+	if len(m.projects) == 0 || height < 3 {
 		return ""
 	}
 	p := m.projects[m.cursor]
@@ -383,8 +402,12 @@ func (m *model) formatMetadata(height int) string {
 		lines = lines[:height]
 	}
 	for i, line := range lines {
-		if len(line) > m.width/2-2 {
-			lines[i] = line[:m.width/2-5] + "..."
+		// Use a safe calculation for width constraints
+		if m.width > 10 {
+			maxWidth := m.width/2 - 2
+			if len(line) > maxWidth && maxWidth > 3 {
+				lines[i] = line[:maxWidth-3] + "..."
+			}
 		}
 	}
 	readmeView := strings.Join(lines, "\n")

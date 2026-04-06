@@ -3,14 +3,16 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	CodeFolder string                    `yaml:"code_folder"`
-	Projects   map[string]ProjectDetails `yaml:"projects"`
-	NewTabCmd  string                    `yaml:"new_tab_cmd"`
+	CodeFolder  string                    `yaml:"code_folder"`
+	Projects    map[string]ProjectDetails `yaml:"projects"`
+	NewTabCmd   string                    `yaml:"new_tab_cmd"`
+	LastScanned time.Time                 `yaml:"last_scanned"`
 }
 
 type ProjectDetails struct {
