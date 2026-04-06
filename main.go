@@ -287,34 +287,27 @@ func (m *model) formatProjects() string {
 			star = "★"
 		}
 
-		// Fixed-width name (up to 20 chars)
 		name := p.name
 		if len(name) > 20 {
 			name = name[:17] + "..."
 		}
 
-		// Fixed-width category (up to 8 chars)
 		cat := p.details.Category
 		if len(cat) > 8 {
 			cat = cat[:5] + "..."
 		}
 
-		// Truncated description
 		desc := p.details.Desc
-		// Calculate available width:
-		// star(1) + space(1) + name(20) + space(1) + cat(8) + sep(3) + space(1) + padding(buffer)
 		maxDescWidth := m.width - 36
 		if len(desc) > maxDescWidth && maxDescWidth > 3 {
 			desc = desc[:maxDescWidth-3] + "..."
 		}
 
-		// Highlight style
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color("208"))
 		if i == m.cursor {
 			style = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("205"))
 		}
 
-		// Combine and render row
 		line := fmt.Sprintf("%-2s %-20s %-8s - %s", star, name, cat, desc)
 		sb.WriteString(style.Width(m.width-2).Render(line) + "\n")
 	}
@@ -372,7 +365,6 @@ func (m *model) formatMetadata(height int) string {
 	}
 	readmeView := strings.Join(lines, "\n")
 
-	// Apply styles for horizontal layout
 	infoWidth := (m.width - 5) * 33 / 100
 	readmeWidth := (m.width - 5) - infoWidth
 
