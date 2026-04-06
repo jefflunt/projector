@@ -1,0 +1,11 @@
+#!/bin/bash
+set -e
+
+# Ensure we're in the root of the project
+cd "$(dirname "$0")/.."
+
+echo "Installing projector..."
+go install .
+
+echo "Installation complete!"
+echo "Make sure $(go env GOPATH)/bin is in your system PATH."
