@@ -23,29 +23,37 @@ type projectRow struct {
 }
 
 type keyMap struct {
-	Up   key.Binding
-	Down key.Binding
-	Quit key.Binding
-	Edit key.Binding
-	Star key.Binding
-	Hide key.Binding
+	Up       key.Binding
+	Down     key.Binding
+	Quit     key.Binding
+	Edit     key.Binding
+	Star     key.Binding
+	Hide     key.Binding
+	Top      key.Binding
+	Bottom   key.Binding
+	JumpUp   key.Binding
+	JumpDown key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Edit, k.Star, k.Hide, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Star, k.Hide, k.Top, k.Bottom, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Up, k.Down, k.Edit, k.Star, k.Hide, k.Quit}}
+	return [][]key.Binding{{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Star, k.Hide, k.Top, k.Bottom, k.Quit}}
 }
 
 var keys = keyMap{
-	Up:   key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k/up", "move up")),
-	Down: key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/down", "move down")),
-	Quit: key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q/ctrl+c", "quit")),
-	Edit: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "edit desc")),
-	Star: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "star")),
-	Hide: key.NewBinding(key.WithKeys("H"), key.WithHelp("H", "hide")),
+	Up:       key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k/up", "move up")),
+	Down:     key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/down", "move down")),
+	Quit:     key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q/ctrl+c", "quit")),
+	Edit:     key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "edit desc")),
+	Star:     key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "star")),
+	Hide:     key.NewBinding(key.WithKeys("H"), key.WithHelp("H", "hide")),
+	Top:      key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "go to top")),
+	Bottom:   key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "go to bottom")),
+	JumpUp:   key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "jump up 10")),
+	JumpDown: key.NewBinding(key.WithKeys("J"), key.WithHelp("J", "jump down 10")),
 }
 
 type model struct {
@@ -203,6 +211,28 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.viewport.SetContent(m.formatProjects())
 			m.ensureCursorVisible()
+		case key.Matches(msg, keys.Top):
+			m.cursor = 0
+			m.viewport.SetContent(m.formatProjects())
+			m.ensureCursorVisible()
+		case key.Matches(msg, keys.Bottom):
+			if len(m.projects) > 0 {
+				m.cursor = len(m.projects) - 1
+			}
+			m.viewport.SetContent(m.formatProjects())
+			m.ensureCursorVisible()
+		case key.Matches(msg, keys.JumpUp):
+			if len(m.projects) > 0 {
+				m.cursor = (((m.cursor - 10) % len(m.projects)) + len(m.projects)) % len(m.projects)
+			}
+			m.viewport.SetContent(m.formatProjects())
+			m.ensureCursorVisible()
+		case key.Matches(msg, keys.JumpDown):
+			if len(m.projects) > 0 {
+				m.cursor = (m.cursor + 10) % len(m.projects)
+			}
+			m.viewport.SetContent(m.formatProjects())
+			m.ensureCursorVisible()
 		}
 	case spinner.TickMsg:
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -216,6 +246,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				existing := m.config.Projects[name]
 				p.Desc = existing.Desc
+				p.Starred = existing.Starred || p.Starred
+				p.Show = existing.Show
 				m.config.Projects[name] = p
 			}
 		}

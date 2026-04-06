@@ -115,6 +115,10 @@ func ScanProjects(codeFolder string) (map[string]config.ProjectDetails, error) {
 						languages["Java"] = true
 					case ".py":
 						languages["Python"] = true
+					case ".kt":
+						languages["Kotlin"] = true
+					case ".swift":
+						languages["Swift"] = true
 					}
 				}
 				return nil
