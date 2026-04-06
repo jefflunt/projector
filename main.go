@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"projector/config"
 	"projector/scanner"
 	"sort"
@@ -34,14 +36,15 @@ type keyMap struct {
 	JumpUp   key.Binding
 	JumpDown key.Binding
 	Category key.Binding
+	NewTab   key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Category, k.Star, k.Hide, k.Top, k.Bottom, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Category, k.Star, k.Hide, k.Top, k.Bottom, k.NewTab, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Category, k.Star, k.Hide, k.Top, k.Bottom, k.Quit}}
+	return [][]key.Binding{{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Category, k.Star, k.Hide, k.Top, k.Bottom, k.NewTab, k.Quit}}
 }
 
 var keys = keyMap{
@@ -56,6 +59,7 @@ var keys = keyMap{
 	JumpUp:   key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "jump up 10")),
 	JumpDown: key.NewBinding(key.WithKeys("J"), key.WithHelp("J", "jump down 10")),
 	Category: key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "set category")),
+	NewTab:   key.NewBinding(key.WithKeys("T"), key.WithHelp("T", "open terminal")),
 }
 
 type model struct {
@@ -69,6 +73,7 @@ type model struct {
 	help        help.Model
 	textInput   textinput.Model
 	editingMode string // "none", "desc", "cat"
+	errorMsg    string
 	width       int
 	height      int
 }
@@ -160,6 +165,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport = viewport.New(msg.Width, msg.Height-3)
 		m.viewport.SetContent(m.formatProjects())
 	case tea.KeyMsg:
+		if m.errorMsg != "" {
+			m.errorMsg = ""
+			return m, nil
+		}
 		if m.editingMode != "none" {
 			switch msg.String() {
 			case "enter":
@@ -243,6 +252,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.viewport.SetContent(m.formatProjects())
 			m.ensureCursorVisible()
+		case key.Matches(msg, keys.NewTab):
+			if len(m.projects) > 0 && m.config.NewTabCmd != "" {
+				path := filepath.Join(m.config.CodeFolder, m.projects[m.cursor].name)
+				cmdStr := fmt.Sprintf(m.config.NewTabCmd, path)
+				cmd := exec.Command("sh", "-c", cmdStr)
+				// Use Start() to run asynchronously and not block the TUI
+				err := cmd.Start()
+				if err != nil {
+					m.errorMsg = fmt.Sprintf("Error launching terminal: %v", err)
+				}
+			}
 		}
 	case spinner.TickMsg:
 		m.spinner, cmd = m.spinner.Update(msg)
@@ -326,6 +346,10 @@ func (m *model) View() string {
 		}
 		return fmt.Sprintf("\n  %s for %s:\n\n%s\n\n(press enter to save, esc to cancel)",
 			prompt, m.projects[m.cursor].name, m.textInput.View())
+	}
+
+	if m.errorMsg != "" {
+		return fmt.Sprintf("\n  Error: %s\n\n(press any key to dismiss)", m.errorMsg)
 	}
 
 	listHeight := (m.height - 3) * 4 / 10

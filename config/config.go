@@ -10,6 +10,7 @@ import (
 type Config struct {
 	CodeFolder string                    `yaml:"code_folder"`
 	Projects   map[string]ProjectDetails `yaml:"projects"`
+	NewTabCmd  string                    `yaml:"new_tab_cmd"`
 }
 
 type ProjectDetails struct {
