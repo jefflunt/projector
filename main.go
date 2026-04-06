@@ -239,24 +239,33 @@ func (m *model) ensureCursorVisible() {
 func (m *model) formatProjects() string {
 	var sb strings.Builder
 	for i, p := range m.projects {
-		star := "☆ "
+		star := "☆"
 		if p.details.Starred {
-			star = "★ "
+			star = "★"
 		}
 
-		// Style for the whole row
-		rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("208")) // Orange for star
+		// Fixed-width name (up to 20 chars)
+		name := p.name
+		if len(name) > 20 {
+			name = name[:17] + "..."
+		}
 
-		// Highlight for selected row
+		// Truncated description
+		desc := p.details.Desc
+		maxDescWidth := m.width - 28 // 20(name) + 2(star) + 3(sep) + 3(padding/buffer)
+		if len(desc) > maxDescWidth && maxDescWidth > 3 {
+			desc = desc[:maxDescWidth-3] + "..."
+		}
+
+		// Highlight style
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color("208"))
 		if i == m.cursor {
-			rowStyle = rowStyle.Foreground(lipgloss.Color("0")).Background(lipgloss.Color("205"))
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("205"))
 		}
 
-		line := fmt.Sprintf("%s%s - %s", star, p.name, p.details.Desc)
-		// Pad to width to ensure background color fills row
-		line = rowStyle.Render(fmt.Sprintf("%-*s", m.width-2, line))
-
-		sb.WriteString(line + "\n")
+		// Combine and render row
+		line := fmt.Sprintf("%-2s %-20s - %s", star, name, desc)
+		sb.WriteString(style.Width(m.width-2).Render(line) + "\n")
 	}
 	return sb.String()
 }
