@@ -128,7 +128,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.help.Width = msg.Width
-		m.viewport = viewport.New(msg.Width, msg.Height-3) // Leave space for help bar
+		m.viewport = viewport.New(msg.Width, msg.Height-3)
 		m.viewport.SetContent(m.formatProjects())
 	case tea.KeyMsg:
 		switch {
@@ -172,12 +172,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) ensureCursorVisible() {
-	// If cursor is before start of view, jump to it.
 	if m.cursor < m.viewport.YOffset {
 		m.viewport.YOffset = m.cursor
 	} else if m.cursor >= m.viewport.YOffset+m.viewport.Height {
-		// If cursor is after end of view, jump to it.
-		// Height is lines visible.
 		m.viewport.YOffset = m.cursor - m.viewport.Height + 1
 	}
 }
@@ -204,19 +201,15 @@ func (m *model) View() string {
 		return fmt.Sprintf("\033[H\n  %s Scanning...\n\n", m.spinner.View())
 	}
 
-	// Calculate 40/60 split
 	listHeight := (m.height - 3) * 4 / 10
 	metaHeight := (m.height - 3) - listHeight
 
-	// Top pane: list
 	m.viewport.Height = listHeight
 	m.viewport.SetContent(m.formatProjects())
 	listView := m.viewport.View()
 
-	// Bottom pane: metadata
 	metaView := m.formatMetadata(metaHeight)
 
-	// Combine
 	return fmt.Sprintf("\033[H%s\n%s\n%s", listView, metaView, m.help.View(keys))
 }
 
@@ -227,13 +220,13 @@ func (m *model) formatMetadata(height int) string {
 	p := m.projects[m.cursor]
 	d := p.details
 
-	// Info section (left column)
-	info := fmt.Sprintf("Last Commit: %s\nLanguages: %s\nBuild/Test/Install: %s\nAgent Docs: %v",
-		d.LastCommitDate, strings.Join(d.Languages, ", "), d.BuildTestInstall, d.AgentDocs)
+	info := fmt.Sprintf("Last Commit: %s\nBuild/Test/Install: %s\nAgent Docs: %v\n\nLanguages:",
+		d.LastCommitDate, d.BuildTestInstall, d.AgentDocs)
+	for _, lang := range d.Languages {
+		info += fmt.Sprintf("\n- %s", lang)
+	}
 
-	// README preview (right column)
 	readme := d.ReadmePreview
-	// Truncate based on height and width
 	lines := strings.Split(readme, "\n")
 	if len(lines) > height {
 		lines = lines[:height]
@@ -245,11 +238,9 @@ func (m *model) formatMetadata(height int) string {
 	}
 	readmeView := strings.Join(lines, "\n")
 
-	// Apply styles for horizontal layout
 	colWidth := m.width/2 - 2
 	infoStyle := lipgloss.NewStyle().Width(colWidth)
 	readmeStyle := lipgloss.NewStyle().Width(colWidth)
-	// Just use a pipe character as a separator
 	spacer := lipgloss.NewStyle().Width(1).Align(lipgloss.Center).Render("|")
 
 	return lipgloss.NewStyle().
