@@ -33,14 +33,15 @@ type keyMap struct {
 	Bottom   key.Binding
 	JumpUp   key.Binding
 	JumpDown key.Binding
+	Category key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Star, k.Hide, k.Top, k.Bottom, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Category, k.Star, k.Hide, k.Top, k.Bottom, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Star, k.Hide, k.Top, k.Bottom, k.Quit}}
+	return [][]key.Binding{{k.Up, k.Down, k.JumpUp, k.JumpDown, k.Edit, k.Category, k.Star, k.Hide, k.Top, k.Bottom, k.Quit}}
 }
 
 var keys = keyMap{
@@ -54,21 +55,22 @@ var keys = keyMap{
 	Bottom:   key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "go to bottom")),
 	JumpUp:   key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "jump up 10")),
 	JumpDown: key.NewBinding(key.WithKeys("J"), key.WithHelp("J", "jump down 10")),
+	Category: key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "set category")),
 }
 
 type model struct {
-	config     *config.Config
-	configPath string
-	projects   []projectRow
-	cursor     int
-	loading    bool
-	spinner    spinner.Model
-	viewport   viewport.Model
-	help       help.Model
-	textInput  textinput.Model
-	editing    bool
-	width      int
-	height     int
+	config      *config.Config
+	configPath  string
+	projects    []projectRow
+	cursor      int
+	loading     bool
+	spinner     spinner.Model
+	viewport    viewport.Model
+	help        help.Model
+	textInput   textinput.Model
+	editingMode string // "none", "desc", "cat"
+	width       int
+	height      int
 }
 
 func initialModel() (*model, error) {
@@ -100,12 +102,13 @@ func initialModel() (*model, error) {
 	h.Styles.FullKey = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
 
 	return &model{
-		config:     cfg,
-		configPath: configPath,
-		loading:    true,
-		spinner:    s,
-		help:       h,
-		textInput:  ti,
+		config:      cfg,
+		configPath:  configPath,
+		loading:     true,
+		spinner:     s,
+		help:        h,
+		textInput:   ti,
+		editingMode: "none",
 	}, nil
 }
 
@@ -157,17 +160,21 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport = viewport.New(msg.Width, msg.Height-3)
 		m.viewport.SetContent(m.formatProjects())
 	case tea.KeyMsg:
-		if m.editing {
+		if m.editingMode != "none" {
 			switch msg.String() {
 			case "enter":
 				p := &m.projects[m.cursor]
-				p.details.Desc = m.textInput.Value()
+				if m.editingMode == "desc" {
+					p.details.Desc = m.textInput.Value()
+				} else if m.editingMode == "cat" {
+					p.details.Category = m.textInput.Value()
+				}
 				m.config.Projects[p.name] = p.details
 				config.SaveConfig(m.configPath, m.config)
-				m.editing = false
+				m.editingMode = "none"
 				m.textInput.SetValue("")
 			case "esc":
-				m.editing = false
+				m.editingMode = "none"
 				m.textInput.SetValue("")
 			}
 			m.textInput, cmd = m.textInput.Update(msg)
@@ -190,8 +197,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.SetContent(m.formatProjects())
 			m.ensureCursorVisible()
 		case key.Matches(msg, keys.Edit):
-			m.editing = true
+			m.editingMode = "desc"
 			m.textInput.SetValue(m.projects[m.cursor].details.Desc)
+		case key.Matches(msg, keys.Category):
+			m.editingMode = "cat"
+			m.textInput.SetValue(m.projects[m.cursor].details.Category)
 		case key.Matches(msg, keys.Star):
 			p := &m.projects[m.cursor]
 			p.details.Starred = !p.details.Starred
@@ -248,6 +258,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				p.Desc = existing.Desc
 				p.Starred = existing.Starred || p.Starred
 				p.Show = existing.Show
+				p.Category = existing.Category
 				m.config.Projects[name] = p
 			}
 		}
@@ -282,9 +293,17 @@ func (m *model) formatProjects() string {
 			name = name[:17] + "..."
 		}
 
+		// Fixed-width category (up to 8 chars)
+		cat := p.details.Category
+		if len(cat) > 8 {
+			cat = cat[:5] + "..."
+		}
+
 		// Truncated description
 		desc := p.details.Desc
-		maxDescWidth := m.width - 28 // 20(name) + 2(star) + 3(sep) + 3(padding/buffer)
+		// Calculate available width:
+		// star(1) + space(1) + name(20) + space(1) + cat(8) + sep(3) + space(1) + padding(buffer)
+		maxDescWidth := m.width - 36
 		if len(desc) > maxDescWidth && maxDescWidth > 3 {
 			desc = desc[:maxDescWidth-3] + "..."
 		}
@@ -296,7 +315,7 @@ func (m *model) formatProjects() string {
 		}
 
 		// Combine and render row
-		line := fmt.Sprintf("%-2s %-20s - %s", star, name, desc)
+		line := fmt.Sprintf("%-2s %-20s %-8s - %s", star, name, cat, desc)
 		sb.WriteString(style.Width(m.width-2).Render(line) + "\n")
 	}
 	return sb.String()
@@ -307,9 +326,13 @@ func (m *model) View() string {
 		return fmt.Sprintf("\033[H\n  %s Scanning...\n\n", m.spinner.View())
 	}
 
-	if m.editing {
-		return fmt.Sprintf("\n  Edit description for %s:\n\n%s\n\n(press enter to save, esc to cancel)",
-			m.projects[m.cursor].name, m.textInput.View())
+	if m.editingMode != "none" {
+		prompt := "Edit description"
+		if m.editingMode == "cat" {
+			prompt = "Set category"
+		}
+		return fmt.Sprintf("\n  %s for %s:\n\n%s\n\n(press enter to save, esc to cancel)",
+			prompt, m.projects[m.cursor].name, m.textInput.View())
 	}
 
 	listHeight := (m.height - 3) * 4 / 10
@@ -331,8 +354,8 @@ func (m *model) formatMetadata(height int) string {
 	p := m.projects[m.cursor]
 	d := p.details
 
-	info := fmt.Sprintf("Last Commit: %s\nBuild/Test/Install: %s\nAgent Docs: %v\n\nLanguages:",
-		d.LastCommitDate, d.BuildTestInstall, d.AgentDocs)
+	info := fmt.Sprintf("Last Commit: %s\nBuild/Test/Install: %s\nAgent Docs: %v\nCategory: %s\n\nLanguages:",
+		d.LastCommitDate, d.BuildTestInstall, d.AgentDocs, d.Category)
 	for _, lang := range d.Languages {
 		info += fmt.Sprintf("\n- %s", lang)
 	}

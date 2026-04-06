@@ -23,6 +23,7 @@ type ProjectDetails struct {
 	Starred          bool     `yaml:"starred"`
 	LastCommitDate   string   `yaml:"last_commit_date"`
 	ReadmePreview    string   `yaml:"readme_preview"`
+	Category         string   `yaml:"category"`
 }
 
 func GetConfigPath() (string, error) {
