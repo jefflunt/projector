@@ -11,34 +11,11 @@ import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
-
-func (m *model) prepareProjectList() {
-	var starred, unstarred []projectRow
-	for name, p := range m.config.Projects {
-		if !p.Show {
-			continue
-		}
-		row := projectRow{name, p}
-		if p.Starred {
-			starred = append(starred, row)
-		} else {
-			unstarred = append(unstarred, row)
-		}
-	}
-
-	sortFunc := func(i, j int, list []projectRow) bool {
-		return strings.ToLower(list[i].name) < strings.ToLower(list[j].name)
-	}
-
-	sort.Slice(starred, func(i, j int) bool { return sortFunc(i, j, starred) })
-	sort.Slice(unstarred, func(i, j int) bool { return sortFunc(i, j, unstarred) })
-
-	m.projects = append(starred, unstarred...)
-}
 
 type projectRow struct {
 	name    string
@@ -49,20 +26,26 @@ type keyMap struct {
 	Up   key.Binding
 	Down key.Binding
 	Quit key.Binding
+	Edit key.Binding
+	Star key.Binding
+	Hide key.Binding
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Up, k.Down, k.Quit}
+	return []key.Binding{k.Up, k.Down, k.Edit, k.Star, k.Hide, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{{k.Up, k.Down, k.Quit}}
+	return [][]key.Binding{{k.Up, k.Down, k.Edit, k.Star, k.Hide, k.Quit}}
 }
 
 var keys = keyMap{
 	Up:   key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k/up", "move up")),
 	Down: key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/down", "move down")),
 	Quit: key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q/ctrl+c", "quit")),
+	Edit: key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "edit desc")),
+	Star: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "star")),
+	Hide: key.NewBinding(key.WithKeys("H"), key.WithHelp("H", "hide")),
 }
 
 type model struct {
@@ -74,6 +57,8 @@ type model struct {
 	spinner    spinner.Model
 	viewport   viewport.Model
 	help       help.Model
+	textInput  textinput.Model
+	editing    bool
 	width      int
 	height     int
 }
@@ -98,13 +83,46 @@ func initialModel() (*model, error) {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
+	ti := textinput.New()
+	ti.Placeholder = "Enter description..."
+	ti.Focus()
+
+	h := help.New()
+	h.Styles.ShortKey = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
+	h.Styles.FullKey = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("15"))
+
 	return &model{
 		config:     cfg,
 		configPath: configPath,
 		loading:    true,
 		spinner:    s,
-		help:       help.New(),
+		help:       h,
+		textInput:  ti,
 	}, nil
+}
+
+func (m *model) prepareProjectList() {
+	var starred, unstarred []projectRow
+	for name, p := range m.config.Projects {
+		if !p.Show {
+			continue
+		}
+		row := projectRow{name, p}
+		if p.Starred {
+			starred = append(starred, row)
+		} else {
+			unstarred = append(unstarred, row)
+		}
+	}
+
+	sortFunc := func(i, j int, list []projectRow) bool {
+		return strings.ToLower(list[i].name) < strings.ToLower(list[j].name)
+	}
+
+	sort.Slice(starred, func(i, j int) bool { return sortFunc(i, j, starred) })
+	sort.Slice(unstarred, func(i, j int) bool { return sortFunc(i, j, unstarred) })
+
+	m.projects = append(starred, unstarred...)
 }
 
 func (m *model) Init() tea.Cmd {
@@ -131,6 +149,23 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport = viewport.New(msg.Width, msg.Height-3)
 		m.viewport.SetContent(m.formatProjects())
 	case tea.KeyMsg:
+		if m.editing {
+			switch msg.String() {
+			case "enter":
+				p := &m.projects[m.cursor]
+				p.details.Desc = m.textInput.Value()
+				m.config.Projects[p.name] = p.details
+				config.SaveConfig(m.configPath, m.config)
+				m.editing = false
+				m.textInput.SetValue("")
+			case "esc":
+				m.editing = false
+				m.textInput.SetValue("")
+			}
+			m.textInput, cmd = m.textInput.Update(msg)
+			return m, cmd
+		}
+
 		switch {
 		case key.Matches(msg, keys.Quit):
 			return m, tea.Quit
@@ -143,6 +178,28 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Up):
 			if len(m.projects) > 0 {
 				m.cursor = (m.cursor - 1 + len(m.projects)) % len(m.projects)
+			}
+			m.viewport.SetContent(m.formatProjects())
+			m.ensureCursorVisible()
+		case key.Matches(msg, keys.Edit):
+			m.editing = true
+			m.textInput.SetValue(m.projects[m.cursor].details.Desc)
+		case key.Matches(msg, keys.Star):
+			p := &m.projects[m.cursor]
+			p.details.Starred = !p.details.Starred
+			m.config.Projects[p.name] = p.details
+			config.SaveConfig(m.configPath, m.config)
+			m.prepareProjectList()
+			m.viewport.SetContent(m.formatProjects())
+			m.ensureCursorVisible()
+		case key.Matches(msg, keys.Hide):
+			p := &m.projects[m.cursor]
+			p.details.Show = false
+			m.config.Projects[p.name] = p.details
+			config.SaveConfig(m.configPath, m.config)
+			m.prepareProjectList()
+			if m.cursor >= len(m.projects) && m.cursor > 0 {
+				m.cursor--
 			}
 			m.viewport.SetContent(m.formatProjects())
 			m.ensureCursorVisible()
@@ -182,15 +239,23 @@ func (m *model) ensureCursorVisible() {
 func (m *model) formatProjects() string {
 	var sb strings.Builder
 	for i, p := range m.projects {
-		cursor := "  "
-		if i == m.cursor {
-			cursor = "> "
+		star := "☆ "
+		if p.details.Starred {
+			star = "★ "
 		}
 
-		line := fmt.Sprintf("%s%s - %s", cursor, p.name, p.details.Desc)
+		// Style for the whole row
+		rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("208")) // Orange for star
+
+		// Highlight for selected row
 		if i == m.cursor {
-			line = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Render(line)
+			rowStyle = rowStyle.Foreground(lipgloss.Color("0")).Background(lipgloss.Color("205"))
 		}
+
+		line := fmt.Sprintf("%s%s - %s", star, p.name, p.details.Desc)
+		// Pad to width to ensure background color fills row
+		line = rowStyle.Render(fmt.Sprintf("%-*s", m.width-2, line))
+
 		sb.WriteString(line + "\n")
 	}
 	return sb.String()
@@ -199,6 +264,11 @@ func (m *model) formatProjects() string {
 func (m *model) View() string {
 	if m.loading {
 		return fmt.Sprintf("\033[H\n  %s Scanning...\n\n", m.spinner.View())
+	}
+
+	if m.editing {
+		return fmt.Sprintf("\n  Edit description for %s:\n\n%s\n\n(press enter to save, esc to cancel)",
+			m.projects[m.cursor].name, m.textInput.View())
 	}
 
 	listHeight := (m.height - 3) * 4 / 10
